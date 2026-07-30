@@ -160,18 +160,18 @@
     .btn-copy-img { background: #222; color: #fff; border: 1px solid #444; }
     .btn-copy-vid { background: var(--orange); color: #fff; }
 
-    /* ESTADO TEMPORÁRIO AO COPIAR */
+    /* ESTADO TEMPORÁRIO AO COPIAR COM ANIMAÇÃO POP */
     .btn-copy.copied {
       background: var(--green) !important;
       color: #fff !important;
       border-color: var(--green) !important;
-      box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
-      animation: copyPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.6);
+      animation: copyPop 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
 
     @keyframes copyPop {
-      0% { transform: scale(0.9); }
-      50% { transform: scale(1.05); }
+      0% { transform: scale(0.92); }
+      50% { transform: scale(1.06); }
       100% { transform: scale(1); }
     }
 
@@ -554,6 +554,23 @@
       return lower.endsWith('.mp4') || lower.endsWith('.webm') || lower.endsWith('.ogg') || lower.endsWith('.mov');
     }
 
+    // CONVERTE TEXTO PARA BASE64 PARA PREVENIR ERROS DE ASPAS E QUEBRA DE LINHA
+    function toBase64(str) {
+      try {
+        return btoa(unescape(encodeURIComponent(str || "")));
+      } catch (e) {
+        return "";
+      }
+    }
+
+    function fromBase64(b64) {
+      try {
+        return decodeURIComponent(escape(atob(b64 || "")));
+      } catch (e) {
+        return "";
+      }
+    }
+
     function render() {
       var filteredPrompts = window.prompts.filter(p => window.selectedCategory === "Todas" || p.categoria === window.selectedCategory);
 
@@ -568,6 +585,9 @@
           ? `<video class="card-media" src="${p.media}" autoplay loop muted playsinline></video>`
           : `<img class="card-media" src="${p.media}" alt="${p.titulo}" onerror="this.src='https://via.placeholder.com/300x400?text=Sem+Imagem'" />`;
 
+        var b64Img = toBase64(p.promptImg);
+        var b64Vid = toBase64(p.promptVid);
+
         return `
           <div class="card">
             <span class="card-badge">${p.categoria || 'Geral'}</span>
@@ -575,8 +595,8 @@
             <div class="card-content">
               <div class="card-title">${p.titulo}</div>
               <div class="card-desc">${p.desc}</div>
-              <button class="btn-copy btn-copy-img" onclick="copyText(event, '${escapeJs(p.promptImg)}', '📸 PROMPT IMAGEM')">📸 PROMPT IMAGEM</button>
-              <button class="btn-copy btn-copy-vid" onclick="copyText(event, '${escapeJs(p.promptVid)}', '🎬 PROMPT VÍDEO')">🎬 PROMPT VÍDEO</button>
+              <button class="btn-copy btn-copy-img" onclick="copyText(event, '${b64Img}', '📸 PROMPT IMAGEM')">📸 PROMPT IMAGEM</button>
+              <button class="btn-copy btn-copy-vid" onclick="copyText(event, '${b64Vid}', '🎬 PROMPT VÍDEO')">🎬 PROMPT VÍDEO</button>
             </div>
           </div>
         `;
@@ -712,18 +732,19 @@
       }
     }
 
-    // CÓPIA COM ANIMAÇÃO NO BOTÃO E NO TOAST
-    function copyText(event, txt, originalText) {
+    // FUNÇÃO DE CÓPIA GARANTIDA PARA TODOS OS PROMPTS E ANIMAÇÃO EM 100% DOS BOTÕES
+    function copyText(event, b64Text, originalText) {
       var btn = event.currentTarget;
+      var textToCopy = fromBase64(b64Text);
 
       var ta = document.createElement("textarea");
-      ta.value = txt;
+      ta.value = textToCopy;
       document.body.appendChild(ta);
       ta.select();
       document.execCommand("copy");
       document.body.removeChild(ta);
 
-      // Animação no botão clicado
+      // Aplica a animação no botão
       btn.classList.add("copied");
       btn.innerText = "✓ COPIADO!";
 
@@ -733,10 +754,6 @@
       }, 1200);
 
       showToast("Prompt copiado para a área de transferência!");
-    }
-
-    function escapeJs(str) {
-      return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
     }
 
     var toastTimeout;
