@@ -16,7 +16,7 @@
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
     body { background-color: var(--bg); color: var(--text); padding: 16px; padding-bottom: 80px; }
 
-    header { text-align: center; margin-bottom: 20px; }
+    header { text-align: center; margin-bottom: 16px; }
     h1 { color: var(--orange); font-size: 1.6rem; margin-bottom: 6px; }
     p.sub { color: var(--muted); font-size: 0.85rem; }
 
@@ -47,7 +47,7 @@
     .admin-panel.active { display: block; }
     .admin-panel h2 { font-size: 1.1rem; color: var(--orange); margin-bottom: 12px; }
 
-    .form-group { margin-bottom: 10px; }
+    .form-group { margin-bottom: 12px; }
     .form-group label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
     .form-control {
       width: 100%; padding: 10px;
@@ -57,14 +57,21 @@
     textarea.form-control { min-height: 60px; }
 
     /* SELECTOR DE TIPO DE MÍDIA */
-    .media-type-selector {
-      display: flex; gap: 8px; margin-bottom: 8px;
-    }
+    .media-type-selector { display: flex; gap: 8px; margin-bottom: 8px; }
     .media-type-btn {
       flex: 1; padding: 8px; background: #1a1a20; border: 1px solid #333;
       color: var(--muted); border-radius: 6px; font-size: 0.75rem; font-weight: bold; cursor: pointer;
     }
     .media-type-btn.active { background: var(--orange); color: #fff; border-color: var(--orange); }
+
+    /* ÁREA DE CRIAR CATEGORIAS */
+    .cat-create-box {
+      display: flex; gap: 8px; margin-top: 4px;
+    }
+    .btn-add-cat {
+      background: #3b82f6; color: #fff; border: none; padding: 0 12px;
+      border-radius: 6px; font-weight: bold; font-size: 0.8rem; cursor: pointer;
+    }
 
     .btn-save {
       width: 100%; padding: 12px;
@@ -81,17 +88,32 @@
     }
     .btn-del { background: #ef4444; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
 
+    /* BARRA DE CATEGORIAS / FILTROS */
+    .categories-bar {
+      display: flex; gap: 8px; overflow-x: auto; padding-bottom: 12px; margin-bottom: 16px;
+      scrollbar-width: none;
+    }
+    .categories-bar::-webkit-scrollbar { display: none; }
+    .cat-filter-btn {
+      padding: 8px 14px; background: #1a1a20; border: 1px solid #333;
+      color: var(--muted); border-radius: 20px; font-size: 0.8rem; font-weight: bold;
+      white-space: nowrap; cursor: pointer;
+    }
+    .cat-filter-btn.active { background: var(--orange); color: #fff; border-color: var(--orange); }
+
     /* GRID DE CARDS */
     .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
     @media (min-width: 768px) { .grid { grid-template-columns: repeat(4, 1fr); gap: 16px; } }
 
     .card {
-      background: var(--card);
-      border: 1px solid #222;
-      border-radius: 10px;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
+      background: var(--card); border: 1px solid #222; border-radius: 10px;
+      overflow: hidden; display: flex; flex-direction: column; position: relative;
+    }
+
+    .card-badge {
+      position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,0.7);
+      color: var(--orange); border: 1px solid var(--orange); font-size: 0.6rem;
+      font-weight: bold; padding: 2px 6px; border-radius: 4px; text-transform: uppercase;
     }
 
     .card-img { width: 100%; aspect-ratio: 3/4; object-fit: cover; background: #000; }
@@ -135,7 +157,21 @@
         <input type="text" id="fTitulo" class="form-control" placeholder="Ex: Modelo no Espelho" required />
       </div>
 
-      <!-- SELETOR DE GALERIA OU LINK -->
+      <!-- SEÇÃO DE CATEGORIA -->
+      <div class="form-group">
+        <label>Categoria:</label>
+        <select id="fCategoria" class="form-control" required></select>
+        
+        <div style="margin-top: 6px;">
+          <label style="font-size:0.7rem; color:#888;">Ou crie uma nova categoria:</label>
+          <div class="cat-create-box">
+            <input type="text" id="fNovaCategoria" class="form-control" placeholder="Ex: Masculino, Fitness..." />
+            <button type="button" class="btn-add-cat" onclick="addNewCategory()">+ Criar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SELETOR DE MÍDIA -->
       <div class="form-group">
         <label>Mídia (Escolha o método):</label>
         <div class="media-type-selector">
@@ -143,12 +179,10 @@
           <button type="button" class="media-type-btn" id="btnOptUrl" onclick="setMediaOption('url')">🔗 Link (URL)</button>
         </div>
 
-        <!-- Opção 1: Selecionar Arquivo da Galeria -->
         <div id="inputGroupFile">
           <input type="file" id="fFile" class="form-control" accept="image/*,video/*" onchange="handleFileSelect(event)" />
         </div>
 
-        <!-- Opção 2: Inserir Link -->
         <div id="inputGroupUrl" style="display: none;">
           <input type="text" id="fMediaUrl" class="form-control" placeholder="https://..." />
         </div>
@@ -177,16 +211,21 @@
     </div>
   </div>
 
+  <!-- BARRA DE FILTROS DE CATEGORIAS -->
+  <div class="categories-bar" id="categoriesBar"></div>
+
   <!-- CONTAINER DOS CARDS -->
   <div class="grid" id="promptsGrid"></div>
 
   <div class="toast" id="toast">✓ Copiado com sucesso!</div>
 
   <script>
+    var defaultCategories = ["Todas", "Feminino", "Masculino", "Eletrônicos"];
     var defaultPrompts = [
       {
         id: 1,
         titulo: "Modelo Natural",
+        categoria: "Feminino",
         media: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&q=80",
         desc: "Ideal para roupas e acessórios",
         promptImg: "Foto realista de modelo brasileira vestindo o produto da imagem.",
@@ -194,7 +233,9 @@
       }
     ];
 
+    var categories = JSON.parse(localStorage.getItem("ps_cats")) || defaultCategories;
     var prompts = JSON.parse(localStorage.getItem("ps_data")) || defaultPrompts;
+    var selectedCategory = "Todas";
     var currentMediaOption = "file";
 
     var toggleBtn = document.getElementById("toggleAdminBtn");
@@ -214,7 +255,40 @@
       }
     });
 
-    // Alternar entre Galeria e Link
+    // RENDERIZAR CATEGORIAS NO SELECT DO ADMIN E NA BARRA DE FILTROS
+    function renderCategories() {
+      var select = document.getElementById("fCategoria");
+      select.innerHTML = categories.filter(c => c !== "Todas").map(c => `<option value="${c}">${c}</option>`).join('');
+
+      var bar = document.getElementById("categoriesBar");
+      bar.innerHTML = categories.map(c => {
+        var activeClass = (c === selectedCategory) ? 'active' : '';
+        return `<button class="cat-filter-btn ${activeClass}" onclick="filterByCategory('${c}')">${c}</button>`;
+      }).join('');
+    }
+
+    // CRIAR NOVA CATEGORIA
+    function addNewCategory() {
+      var input = document.getElementById("fNovaCategoria");
+      var val = input.value.trim();
+      if (!val) { alert("Digite o nome da categoria!"); return; }
+      if (categories.includes(val)) { alert("Esta categoria já existe!"); return; }
+
+      categories.push(val);
+      localStorage.setItem("ps_cats", JSON.stringify(categories));
+      input.value = "";
+      renderCategories();
+      document.getElementById("fCategoria").value = val;
+      showToast("Nova categoria criada!");
+    }
+
+    // FILTRAR POR CATEGORIA
+    function filterByCategory(cat) {
+      selectedCategory = cat;
+      renderCategories();
+      render();
+    }
+
     function setMediaOption(option) {
       currentMediaOption = option;
       var btnFile = document.getElementById("btnOptFile");
@@ -235,7 +309,6 @@
       }
     }
 
-    // Processar Imagem Selecionada da Galeria
     function handleFileSelect(e) {
       var file = e.target.files[0];
       if (!file) return;
@@ -247,9 +320,17 @@
     }
 
     function render() {
-      grid.innerHTML = prompts.map(function(p) {
+      var filteredPrompts = prompts.filter(p => selectedCategory === "Todas" || p.categoria === selectedCategory);
+
+      if (filteredPrompts.length === 0) {
+        grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:30px; color:#888;">Nenhum prompt cadastrado nesta categoria.</div>`;
+        return;
+      }
+
+      grid.innerHTML = filteredPrompts.map(function(p) {
         return `
           <div class="card">
+            <span class="card-badge">${p.categoria || 'Geral'}</span>
             <img class="card-img" src="${p.media}" alt="${p.titulo}" onerror="this.src='https://via.placeholder.com/300x400?text=Sem+Imagem'" />
             <div class="card-content">
               <div class="card-title">${p.titulo}</div>
@@ -266,7 +347,7 @@
       adminList.innerHTML = prompts.map(function(p) {
         return `
           <div class="admin-item">
-            <span>${p.titulo}</span>
+            <span><strong>[${p.categoria || 'Geral'}]</strong> ${p.titulo}</span>
             <button class="btn-del" onclick="deletePrompt(${p.id})">Excluir</button>
           </div>
         `;
@@ -294,6 +375,7 @@
       var newP = {
         id: Date.now(),
         titulo: document.getElementById("fTitulo").value,
+        categoria: document.getElementById("fCategoria").value,
         media: finalMediaValue,
         desc: document.getElementById("fDesc").value,
         promptImg: document.getElementById("fPromptImg").value,
@@ -337,6 +419,8 @@
       setTimeout(function() { t.style.display = "none"; }, 2000);
     }
 
+    // INICIALIZAR
+    renderCategories();
     render();
   </script>
 </body>
