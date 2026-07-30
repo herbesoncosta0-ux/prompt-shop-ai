@@ -192,7 +192,7 @@
         </div>
 
         <div id="inputGroupFile">
-          <input type="file" id="fFile" class="form-control" accept="image/*,video/*" onchange="handleFileSelect(event)" />
+          <input type="file" id="fFile" class="form-control" accept="image/*" onchange="handleFileSelect(event)" />
         </div>
 
         <div id="inputGroupUrl" style="display: none;">
@@ -237,7 +237,6 @@
     import { 
       getFirestore, 
       doc, 
-      getDoc, 
       setDoc, 
       onSnapshot 
     } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -282,19 +281,17 @@
       if (docSnap.exists()) {
         const data = docSnap.data();
         
-        // Se houver dados locais antigos, une com o Firebase para não perder nada
         if (localPrompts && localPrompts.length > 0) {
           window.prompts = combineUniquePrompts(data.prompts || [], localPrompts);
           window.categories = combineUniqueCategories(data.categories || [], localCats || []);
-          localStorage.removeItem("ps_data"); // Limpa local após migrar
+          localStorage.removeItem("ps_data");
           localStorage.removeItem("ps_cats");
-          saveToFirebase(); // Atualiza na nuvem
+          saveToFirebase();
         } else {
           if (data.categories) window.categories = data.categories;
           if (data.prompts) window.prompts = data.prompts;
         }
       } else {
-        // Se a nuvem estiver vazia, envia os locais antigos ou o padrão
         if (localPrompts && localPrompts.length > 0) {
           window.prompts = localPrompts;
           if (localCats) window.categories = localCats;
@@ -326,8 +323,11 @@
           categories: window.categories,
           prompts: window.prompts
         });
+        return true;
       } catch (e) {
         console.error("Erro ao salvar no Firebase:", e);
+        alert("Erro ao salvar na nuvem: " + e.message);
+        return false;
       }
     }
 
@@ -363,19 +363,21 @@
       }).join('');
     }
 
-    function addNewCategory() {
+    async function addNewCategory() {
       var input = document.getElementById("fNovaCategoria");
       var val = input.value.trim();
       if (!val) { alert("Digite o nome da categoria!"); return; }
       if (window.categories.includes(val)) { alert("Esta categoria já existe!"); return; }
 
       window.categories.push(val);
-      window.saveToFirebase();
-      input.value = "";
-      showToast("Nova categoria criada na nuvem!");
+      var ok = await window.saveToFirebase();
+      if (ok) {
+        input.value = "";
+        showToast("Nova categoria criada na nuvem!");
+      }
     }
 
-    function deleteCurrentCategory() {
+    async function deleteCurrentCategory() {
       var select = document.getElementById("fCategoria");
       var catToDelete = select.value;
 
@@ -397,12 +399,12 @@
           window.selectedCategory = "Todas";
         }
 
-        window.saveToFirebase();
+        await window.saveToFirebase();
         showToast("Categoria excluída com sucesso!");
       }
     }
 
-    function movePrompt(index, direction) {
+    async function movePrompt(index, direction) {
       var newIndex = index + direction;
       if (newIndex < 0 || newIndex >= window.prompts.length) return;
 
@@ -410,7 +412,7 @@
       window.prompts[index] = window.prompts[newIndex];
       window.prompts[newIndex] = temp;
 
-      window.saveToFirebase();
+      await window.saveToFirebase();
     }
 
     function filterByCategory(cat) {
@@ -439,19 +441,43 @@
       }
     }
 
+    // REDIMENSIONA E COMPRIME A IMAGEM DA GALERIA ANTES DE SALVAR
     function handleFileSelect(e) {
       var file = e.target.files[0];
       if (!file) return;
 
-      if (file.size > 1048576) { 
-        alert("A imagem da galeria é muito grande. Escolha uma foto menor que 1MB ou use a opção de Link (URL).");
-        e.target.value = "";
-        return;
-      }
-
       var reader = new FileReader();
       reader.onload = function(evt) {
-        document.getElementById("fFinalMedia").value = evt.target.result;
+        var img = new Image();
+        img.onload = function() {
+          var canvas = document.createElement("canvas");
+          var max_size = 600; // Tamanho ideal para web
+          var width = img.width;
+          var height = img.height;
+
+          if (width > height) {
+            if (width > max_size) {
+              height *= max_size / width;
+              width = max_size;
+            }
+          } else {
+            if (height > max_size) {
+              width *= max_size / height;
+              height = max_size;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          var ctx = canvas.getContext("canvas");
+          var ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Converte para JPEG com 70% de qualidade
+          var dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+          document.getElementById("fFinalMedia").value = dataUrl;
+        };
+        img.src = evt.target.result;
       };
       reader.readAsDataURL(file);
     }
@@ -497,20 +523,28 @@
       }).join('');
     }
 
-    form.addEventListener("submit", function(e) {
+    form.addEventListener("submit", async function(e) {
       e.preventDefault();
+      
+      var btnSubmit = document.getElementById("btnSaveSubmit");
+      btnSubmit.innerText = "SALVANDO NA NUVEM...";
+      btnSubmit.disabled = true;
       
       var finalMediaValue = "";
       if (window.currentMediaOption === 'file') {
         finalMediaValue = document.getElementById("fFinalMedia").value;
         if (!finalMediaValue) {
-          alert("Por favor, selecione uma imagem da galeria!");
+          alert("Por favor, aguarde o carregamento da foto ou selecione uma imagem válida!");
+          btnSubmit.innerText = "SALVAR PROMPT";
+          btnSubmit.disabled = false;
           return;
         }
       } else {
         finalMediaValue = document.getElementById("fMediaUrl").value;
         if (!finalMediaValue) {
           alert("Por favor, insira o link da imagem!");
+          btnSubmit.innerText = "SALVAR PROMPT";
+          btnSubmit.disabled = false;
           return;
         }
       }
@@ -526,17 +560,24 @@
       };
 
       window.prompts.unshift(newP);
-      window.saveToFirebase();
+      var ok = await window.saveToFirebase();
       
-      form.reset();
-      document.getElementById("fFinalMedia").value = "";
-      showToast("Prompt salvo na nuvem com sucesso!");
+      btnSubmit.innerText = "SALVAR PROMPT";
+      btnSubmit.disabled = false;
+
+      if (ok) {
+        form.reset();
+        document.getElementById("fFinalMedia").value = "";
+        showToast("Prompt salvo na nuvem com sucesso!");
+      }
     });
 
-    function deletePrompt(id) {
-      window.prompts = window.prompts.filter(function(p) { return p.id !== id; });
-      window.saveToFirebase();
-      showToast("Prompt excluído!");
+    async function deletePrompt(id) {
+      if (confirm("Tem certeza que deseja excluir este prompt da nuvem?")) {
+        window.prompts = window.prompts.filter(function(p) { return p.id !== id; });
+        await window.saveToFirebase();
+        showToast("Prompt excluído!");
+      }
     }
 
     function copyText(txt) {
