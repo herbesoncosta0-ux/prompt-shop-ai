@@ -64,9 +64,17 @@
     }
     .media-type-btn.active { background: var(--orange); color: #fff; border-color: var(--orange); }
 
-    /* ÁREA DE CRIAR CATEGORIAS */
+    /* ÁREA DE GERENCIAR CATEGORIAS */
+    .cat-select-box {
+      display: flex; gap: 8px; align-items: center;
+    }
+    .btn-del-cat {
+      background: #ef4444; color: #fff; border: none; padding: 10px 12px;
+      border-radius: 6px; font-weight: bold; font-size: 0.75rem; cursor: pointer; white-space: nowrap;
+    }
+
     .cat-create-box {
-      display: flex; gap: 8px; margin-top: 4px;
+      display: flex; gap: 8px; margin-top: 6px;
     }
     .btn-add-cat {
       background: #3b82f6; color: #fff; border: none; padding: 0 12px;
@@ -157,10 +165,13 @@
         <input type="text" id="fTitulo" class="form-control" placeholder="Ex: Modelo no Espelho" required />
       </div>
 
-      <!-- SEÇÃO DE CATEGORIA -->
+      <!-- SEÇÃO DE CATEGORIA COM OPÇÃO DE EXCLUIR -->
       <div class="form-group">
         <label>Categoria:</label>
-        <select id="fCategoria" class="form-control" required></select>
+        <div class="cat-select-box">
+          <select id="fCategoria" class="form-control" required></select>
+          <button type="button" class="btn-del-cat" onclick="deleteCurrentCategory()">🗑️ Excluir</button>
+        </div>
         
         <div style="margin-top: 6px;">
           <label style="font-size:0.7rem; color:#888;">Ou crie uma nova categoria:</label>
@@ -220,7 +231,7 @@
   <div class="toast" id="toast">✓ Copiado com sucesso!</div>
 
   <script>
-    var defaultCategories = ["Todas", "Feminino", "Masculino", "Eletrônicos"];
+    var defaultCategories = ["Todas", "Geral", "Feminino", "Masculino", "Eletrônicos"];
     var defaultPrompts = [
       {
         id: 1,
@@ -255,7 +266,7 @@
       }
     });
 
-    // RENDERIZAR CATEGORIAS NO SELECT DO ADMIN E NA BARRA DE FILTROS
+    // RENDERIZAR CATEGORIAS
     function renderCategories() {
       var select = document.getElementById("fCategoria");
       select.innerHTML = categories.filter(c => c !== "Todas").map(c => `<option value="${c}">${c}</option>`).join('');
@@ -280,6 +291,41 @@
       renderCategories();
       document.getElementById("fCategoria").value = val;
       showToast("Nova categoria criada!");
+    }
+
+    // EXCLUIR CATEGORIA SELECIONADA
+    function deleteCurrentCategory() {
+      var select = document.getElementById("fCategoria");
+      var catToDelete = select.value;
+
+      if (!catToDelete) return;
+      if (catToDelete === "Geral") {
+        alert("A categoria 'Geral' é padrão e não pode ser excluída.");
+        return;
+      }
+
+      if (confirm(`Tem certeza que deseja excluir a categoria "${catToDelete}"? Os prompts dela serão movidos para "Geral".`)) {
+        // Remover a categoria da lista
+        categories = categories.filter(c => c !== catToDelete);
+        localStorage.setItem("ps_cats", JSON.stringify(categories));
+
+        // Mover os prompts da categoria excluída para "Geral"
+        prompts.forEach(p => {
+          if (p.categoria === catToDelete) {
+            p.categoria = "Geral";
+          }
+        });
+        localStorage.setItem("ps_data", JSON.stringify(prompts));
+
+        if (selectedCategory === catToDelete) {
+          selectedCategory = "Todas";
+        }
+
+        renderCategories();
+        render();
+        renderAdminList();
+        showToast("Categoria excluída com sucesso!");
+      }
     }
 
     // FILTRAR POR CATEGORIA
