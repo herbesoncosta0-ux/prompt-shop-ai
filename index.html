@@ -199,7 +199,7 @@
               <div class="card-desc">${p.desc}</div>
               <button class="btn-copy btn-copy-img" onclick="copyText('${escapeJs(p.promptImg)}')">📸 PROMPT IMAGEM</button>
               <button class="btn-copy btn-copy-vid" onclick="copyText('${escapeJs(p.promptVid)}')">🎬 PROMPT VÍDEO</button>
-            </div>
+            toggleBtn.addEventListener("click", function() {
           </div>
         `;
       }).join('');
