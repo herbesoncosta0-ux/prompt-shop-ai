@@ -243,16 +243,17 @@
       <div class="form-group">
         <label>Mídia (Escolha o método):</label>
         <div class="media-type-selector">
-          <button type="button" class="media-type-btn active" id="btnOptFile" onclick="setMediaOption('file')">📁 Foto/Vídeo Galeria</button>
+          <button type="button" class="media-type-btn active" id="btnOptFile" onclick="setMediaOption('file')">📁 Foto Galeria / Vídeo Curto</button>
           <button type="button" class="media-type-btn" id="btnOptUrl" onclick="setMediaOption('url')">🔗 Link (URL)</button>
         </div>
 
         <div id="inputGroupFile">
           <input type="file" id="fFile" class="form-control" accept="image/*,video/*" onchange="handleFileSelect(event)" />
+          <small style="color:#888; font-size:0.7rem; display:block; margin-top:4px;">Para vídeos com mais de 1MB, use a opção <b>🔗 Link (URL)</b> enviando para o Catbox.moe ou Imgur.</small>
         </div>
 
         <div id="inputGroupUrl" style="display: none;">
-          <input type="text" id="fMediaUrl" class="form-control" placeholder="https://... (Link do vídeo MP4 ou imagem)" />
+          <input type="text" id="fMediaUrl" class="form-control" placeholder="https://... (Link direto do vídeo MP4 ou Imagem)" />
         </div>
 
         <input type="hidden" id="fFinalMedia" />
@@ -330,14 +331,13 @@
       renderCategories();
     });
 
-    // CARREGA PROMPTS INDIVIDUAIS DA NUVEM (PREVINE O ERRO DE TAMANHO)
+    // CARREGA PROMPTS INDIVIDUAIS DA NUVEM
     onSnapshot(promptsCollRef, (snapshot) => {
       let loaded = [];
       snapshot.forEach(d => {
         loaded.push(d.data());
       });
 
-      // Se a coleção nova estiver vazia, tenta migrar os dados do formato antigo
       if (loaded.length === 0) {
         onSnapshot(oldDocRef, (oldSnap) => {
           if (oldSnap.exists() && oldSnap.data().prompts) {
@@ -346,7 +346,6 @@
           }
         }, { once: true });
       } else {
-        // Ordena por ordem ou ID
         loaded.sort((a, b) => (b.order ?? b.id) - (a.order ?? a.id));
         window.prompts = loaded;
         render();
@@ -356,9 +355,16 @@
       }
     });
 
-    // SALVA APENAS UM PROMPT (SEM ERRO DE DOCUMENTO GRANDE)
+    // SALVA APENAS UM PROMPT
     async function saveSinglePrompt(promptObj) {
       try {
+        // VERIFICAÇÃO DE SEGURANÇA PARA LIMITE DO FIREBASE (1MB)
+        const mediaStr = promptObj.media || "";
+        if (mediaStr.length > 950000) {
+          alert("O vídeo enviado é muito grande para o Firestore (limite de 1MB).\n\nPara cadastrar vídeos longos/pesados:\n1. Acesse Catbox.moe ou Imgur\n2. Faça o upload do vídeo lá\n3. Use a opção '🔗 Link (URL)' aqui!");
+          return false;
+        }
+
         const idStr = String(promptObj.id || Date.now());
         const pRef = doc(db, "prompts", idStr);
         await setDoc(pRef, {
@@ -527,6 +533,12 @@
 
       // SE FOR VÍDEO
       if (file.type.startsWith('video/')) {
+        if (file.size > 800 * 1024) {
+          alert("Aviso: O vídeo local é maior do que 800KB. Para não dar erro de limite no banco de dados, use a aba '🔗 Link (URL)' enviando seu arquivo para o Catbox.moe ou Imgur.");
+          e.target.value = "";
+          document.getElementById("fFinalMedia").value = "";
+          return;
+        }
         reader.onload = function(evt) {
           document.getElementById("fFinalMedia").value = evt.target.result;
         };
