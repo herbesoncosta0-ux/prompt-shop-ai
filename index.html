@@ -11,6 +11,8 @@
       --orange: #ff6b00;
       --text: #ffffff;
       --muted: #a0a0ab;
+      --green: #10b981;
+      --blue: #3b82f6;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
@@ -73,18 +75,25 @@
 
     .cat-create-box { display: flex; gap: 8px; margin-top: 6px; }
     .btn-add-cat {
-      background: #3b82f6; color: #fff; border: none; padding: 0 12px;
+      background: var(--blue); color: #fff; border: none; padding: 0 12px;
       border-radius: 6px; font-weight: bold; font-size: 0.8rem; cursor: pointer;
     }
 
     .btn-save {
       width: 100%; padding: 12px;
-      background: #10b981; color: #fff;
+      background: var(--green); color: #fff;
       border: none; border-radius: 6px; font-weight: bold;
       margin-top: 10px; cursor: pointer;
     }
 
-    /* LISTA ADMIN COM ORDENAÇÃO */
+    .btn-cancel-edit {
+      width: 100%; padding: 8px;
+      background: #4b5563; color: #fff;
+      border: none; border-radius: 6px; font-weight: bold;
+      margin-top: 6px; cursor: pointer; display: none;
+    }
+
+    /* LISTA ADMIN COM ORDENAÇÃO E EDIÇÃO */
     .admin-list { margin-top: 16px; border-top: 1px solid #333; padding-top: 12px; }
     .admin-item {
       display: flex; justify-content: space-between; align-items: center;
@@ -95,7 +104,8 @@
     .admin-actions { display: flex; gap: 4px; }
     .btn-arrow { background: #333; color: #fff; border: 1px solid #555; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
     .btn-arrow:disabled { opacity: 0.3; cursor: not-allowed; }
-    .btn-del { background: #ef4444; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+    .btn-edit { background: var(--blue); color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+    .btn-del { background: #ef4444; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
 
     /* BARRA DE CATEGORIAS / FILTROS */
     .categories-bar {
@@ -159,8 +169,10 @@
 
   <!-- PAINEL ADMINISTRATIVO -->
   <div class="admin-panel" id="adminPanel">
-    <h2>➕ Cadastrar Novo Prompt</h2>
+    <h2 id="formTitle">➕ Cadastrar Novo Prompt</h2>
     <form id="promptForm">
+      <input type="hidden" id="fEditingId" value="" />
+
       <div class="form-group">
         <label>Título do Prompt</label>
         <input type="text" id="fTitulo" class="form-control" placeholder="Ex: Modelo no Espelho" required />
@@ -214,11 +226,13 @@
         <label>Prompt de Vídeo</label>
         <textarea id="fPromptVid" class="form-control" required></textarea>
       </div>
+
       <button type="submit" class="btn-save" id="btnSaveSubmit">SALVAR PROMPT</button>
+      <button type="button" class="btn-cancel-edit" id="btnCancelEdit" onclick="cancelEditing()">Cancelar Edição</button>
     </form>
 
     <div class="admin-list">
-      <h3 style="font-size:0.85rem; margin-bottom:8px; color:var(--muted);">Reordenar ou Excluir Prompts:</h3>
+      <h3 style="font-size:0.85rem; margin-bottom:8px; color:var(--muted);">Gerenciar, Editar ou Reordenar Prompts:</h3>
       <div id="adminListContainer"></div>
     </div>
   </div>
@@ -345,6 +359,7 @@
       if (adminPanel.classList.contains("active")) {
         adminPanel.classList.remove("active");
         toggleBtn.innerText = "⚙️ ABRIR PAINEL ADMIN / CRIAR";
+        cancelEditing();
       } else {
         adminPanel.classList.add("active");
         toggleBtn.innerText = "✕ FECHAR PAINEL ADMIN";
@@ -436,12 +451,11 @@
       } else {
         btnUrl.classList.add('active');
         btnFile.classList.remove('active');
-        groupUrl.style.display = 'block';
         groupUrl.style.display = 'none';
+        groupUrl.style.display = 'block';
       }
     }
 
-    // REDIMENSIONA E COMPRIME A IMAGEM DA GALERIA ANTES DE SALVAR
     function handleFileSelect(e) {
       var file = e.target.files[0];
       if (!file) return;
@@ -451,7 +465,7 @@
         var img = new Image();
         img.onload = function() {
           var canvas = document.createElement("canvas");
-          var max_size = 600; // Tamanho ideal para web
+          var max_size = 600;
           var width = img.width;
           var height = img.height;
 
@@ -469,11 +483,9 @@
 
           canvas.width = width;
           canvas.height = height;
-          var ctx = canvas.getContext("canvas");
           var ctx = canvas.getContext("2d");
           ctx.drawImage(img, 0, 0, width, height);
 
-          // Converte para JPEG com 70% de qualidade
           var dataUrl = canvas.toDataURL("image/jpeg", 0.7);
           document.getElementById("fFinalMedia").value = dataUrl;
         };
@@ -516,6 +528,7 @@
             <div class="admin-actions">
               <button class="btn-arrow" onclick="movePrompt(${index}, -1)" ${isFirst ? 'disabled' : ''}>⬆️</button>
               <button class="btn-arrow" onclick="movePrompt(${index}, 1)" ${isLast ? 'disabled' : ''}>⬇️</button>
+              <button class="btn-edit" onclick="startEditing(${p.id})">✏️ Editar</button>
               <button class="btn-del" onclick="deletePrompt(${p.id})">Excluir</button>
             </div>
           </div>
@@ -523,52 +536,112 @@
       }).join('');
     }
 
+    // INICIAR MODO DE EDIÇÃO
+    function startEditing(id) {
+      var p = window.prompts.find(item => item.id === id);
+      if (!p) return;
+
+      document.getElementById("fEditingId").value = p.id;
+      document.getElementById("fTitulo").value = p.titulo;
+      document.getElementById("fCategoria").value = p.categoria || "Geral";
+      document.getElementById("fDesc").value = p.desc;
+      document.getElementById("fPromptImg").value = p.promptImg;
+      document.getElementById("fPromptVid").value = p.promptVid;
+
+      // Definir Mídia
+      document.getElementById("fFinalMedia").value = p.media;
+      if (p.media.startsWith("http")) {
+        setMediaOption('url');
+        document.getElementById("fMediaUrl").value = p.media;
+      } else {
+        setMediaOption('file');
+      }
+
+      // Atualizar Interface do Formulário
+      document.getElementById("formTitle").innerText = "✏️ Editar Prompt";
+      var btnSubmit = document.getElementById("btnSaveSubmit");
+      btnSubmit.innerText = "SALVAR ALTERAÇÕES";
+      btnSubmit.style.background = "var(--blue)";
+      document.getElementById("btnCancelEdit").style.display = "block";
+
+      // Rolar para o formulário
+      adminPanel.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // CANCELAR EDIÇÃO
+    function cancelEditing() {
+      form.reset();
+      document.getElementById("fEditingId").value = "";
+      document.getElementById("fFinalMedia").value = "";
+      document.getElementById("formTitle").innerText = "➕ Cadastrar Novo Prompt";
+      
+      var btnSubmit = document.getElementById("btnSaveSubmit");
+      btnSubmit.innerText = "SALVAR PROMPT";
+      btnSubmit.style.background = "var(--green)";
+      document.getElementById("btnCancelEdit").style.display = "none";
+      setMediaOption('file');
+    }
+
     form.addEventListener("submit", async function(e) {
       e.preventDefault();
       
+      var editingId = document.getElementById("fEditingId").value;
+      var isEditing = editingId !== "";
+
       var btnSubmit = document.getElementById("btnSaveSubmit");
       btnSubmit.innerText = "SALVANDO NA NUVEM...";
       btnSubmit.disabled = true;
       
-      var finalMediaValue = "";
-      if (window.currentMediaOption === 'file') {
-        finalMediaValue = document.getElementById("fFinalMedia").value;
-        if (!finalMediaValue) {
-          alert("Por favor, aguarde o carregamento da foto ou selecione uma imagem válida!");
-          btnSubmit.innerText = "SALVAR PROMPT";
-          btnSubmit.disabled = false;
-          return;
-        }
-      } else {
+      var finalMediaValue = document.getElementById("fFinalMedia").value;
+
+      if (window.currentMediaOption === 'url') {
         finalMediaValue = document.getElementById("fMediaUrl").value;
-        if (!finalMediaValue) {
-          alert("Por favor, insira o link da imagem!");
-          btnSubmit.innerText = "SALVAR PROMPT";
-          btnSubmit.disabled = false;
-          return;
-        }
       }
 
-      var newP = {
-        id: Date.now(),
-        titulo: document.getElementById("fTitulo").value,
-        categoria: document.getElementById("fCategoria").value,
-        media: finalMediaValue,
-        desc: document.getElementById("fDesc").value,
-        promptImg: document.getElementById("fPromptImg").value,
-        promptVid: document.getElementById("fPromptVid").value
-      };
+      if (!finalMediaValue) {
+        alert("Por favor, selecione uma foto da galeria ou insira o link da imagem!");
+        btnSubmit.innerText = isEditing ? "SALVAR ALTERAÇÕES" : "SALVAR PROMPT";
+        btnSubmit.disabled = false;
+        return;
+      }
 
-      window.prompts.unshift(newP);
+      if (isEditing) {
+        // ATUALIZAR PROMPT EXISTENTE
+        var targetId = parseInt(editingId);
+        var idx = window.prompts.findIndex(p => p.id === targetId);
+        if (idx !== -1) {
+          window.prompts[idx] = {
+            id: targetId,
+            titulo: document.getElementById("fTitulo").value,
+            categoria: document.getElementById("fCategoria").value,
+            media: finalMediaValue,
+            desc: document.getElementById("fDesc").value,
+            promptImg: document.getElementById("fPromptImg").value,
+            promptVid: document.getElementById("fPromptVid").value
+          };
+        }
+      } else {
+        // CRIAR NOVO PROMPT
+        var newP = {
+          id: Date.now(),
+          titulo: document.getElementById("fTitulo").value,
+          categoria: document.getElementById("fCategoria").value,
+          media: finalMediaValue,
+          desc: document.getElementById("fDesc").value,
+          promptImg: document.getElementById("fPromptImg").value,
+          promptVid: document.getElementById("fPromptVid").value
+        };
+        window.prompts.unshift(newP);
+      }
+
       var ok = await window.saveToFirebase();
-      
-      btnSubmit.innerText = "SALVAR PROMPT";
       btnSubmit.disabled = false;
 
       if (ok) {
-        form.reset();
-        document.getElementById("fFinalMedia").value = "";
-        showToast("Prompt salvo na nuvem com sucesso!");
+        showToast(isEditing ? "Prompt atualizado na nuvem!" : "Prompt salvo na nuvem!");
+        cancelEditing();
+      } else {
+        btnSubmit.innerText = isEditing ? "SALVAR ALTERAÇÕES" : "SALVAR PROMPT";
       }
     });
 
@@ -577,6 +650,7 @@
         window.prompts = window.prompts.filter(function(p) { return p.id !== id; });
         await window.saveToFirebase();
         showToast("Prompt excluído!");
+        cancelEditing();
       }
     }
 
