@@ -65,17 +65,13 @@
     .media-type-btn.active { background: var(--orange); color: #fff; border-color: var(--orange); }
 
     /* ÁREA DE GERENCIAR CATEGORIAS */
-    .cat-select-box {
-      display: flex; gap: 8px; align-items: center;
-    }
+    .cat-select-box { display: flex; gap: 8px; align-items: center; }
     .btn-del-cat {
       background: #ef4444; color: #fff; border: none; padding: 10px 12px;
       border-radius: 6px; font-weight: bold; font-size: 0.75rem; cursor: pointer; white-space: nowrap;
     }
 
-    .cat-create-box {
-      display: flex; gap: 8px; margin-top: 6px;
-    }
+    .cat-create-box { display: flex; gap: 8px; margin-top: 6px; }
     .btn-add-cat {
       background: #3b82f6; color: #fff; border: none; padding: 0 12px;
       border-radius: 6px; font-weight: bold; font-size: 0.8rem; cursor: pointer;
@@ -88,12 +84,17 @@
       margin-top: 10px; cursor: pointer;
     }
 
+    /* LISTA ADMIN COM ORDENAÇÃO */
     .admin-list { margin-top: 16px; border-top: 1px solid #333; padding-top: 12px; }
     .admin-item {
       display: flex; justify-content: space-between; align-items: center;
       background: #1a1a20; padding: 8px; border-radius: 6px; margin-bottom: 6px;
-      font-size: 0.8rem;
+      font-size: 0.8rem; gap: 8px;
     }
+    .admin-item-title { flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .admin-actions { display: flex; gap: 4px; }
+    .btn-arrow { background: #333; color: #fff; border: 1px solid #555; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+    .btn-arrow:disabled { opacity: 0.3; cursor: not-allowed; }
     .btn-del { background: #ef4444; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
 
     /* BARRA DE CATEGORIAS / FILTROS */
@@ -217,7 +218,7 @@
     </form>
 
     <div class="admin-list">
-      <h3 style="font-size:0.85rem; margin-bottom:8px; color:var(--muted);">Prompts Existentes:</h3>
+      <h3 style="font-size:0.85rem; margin-bottom:8px; color:var(--muted);">Reordenar ou Excluir Prompts:</h3>
       <div id="adminListContainer"></div>
     </div>
   </div>
@@ -293,7 +294,7 @@
       showToast("Nova categoria criada!");
     }
 
-    // EXCLUIR CATEGORIA SELECIONADA
+    // EXCLUIR CATEGORIA
     function deleteCurrentCategory() {
       var select = document.getElementById("fCategoria");
       var catToDelete = select.value;
@@ -305,11 +306,9 @@
       }
 
       if (confirm(`Tem certeza que deseja excluir a categoria "${catToDelete}"? Os prompts dela serão movidos para "Geral".`)) {
-        // Remover a categoria da lista
         categories = categories.filter(c => c !== catToDelete);
         localStorage.setItem("ps_cats", JSON.stringify(categories));
 
-        // Mover os prompts da categoria excluída para "Geral"
         prompts.forEach(p => {
           if (p.categoria === catToDelete) {
             p.categoria = "Geral";
@@ -326,6 +325,20 @@
         renderAdminList();
         showToast("Categoria excluída com sucesso!");
       }
+    }
+
+    // MOVER PROMPT PARA CIMA OU PARA BAIXO
+    function movePrompt(index, direction) {
+      var newIndex = index + direction;
+      if (newIndex < 0 || newIndex >= prompts.length) return;
+
+      var temp = prompts[index];
+      prompts[index] = prompts[newIndex];
+      prompts[newIndex] = temp;
+
+      localStorage.setItem("ps_data", JSON.stringify(prompts));
+      render();
+      renderAdminList();
     }
 
     // FILTRAR POR CATEGORIA
@@ -390,11 +403,17 @@
     }
 
     function renderAdminList() {
-      adminList.innerHTML = prompts.map(function(p) {
+      adminList.innerHTML = prompts.map(function(p, index) {
+        var isFirst = index === 0;
+        var isLast = index === prompts.length - 1;
         return `
           <div class="admin-item">
-            <span><strong>[${p.categoria || 'Geral'}]</strong> ${p.titulo}</span>
-            <button class="btn-del" onclick="deletePrompt(${p.id})">Excluir</button>
+            <span class="admin-item-title"><strong>[${p.categoria || 'Geral'}]</strong> ${p.titulo}</span>
+            <div class="admin-actions">
+              <button class="btn-arrow" onclick="movePrompt(${index}, -1)" ${isFirst ? 'disabled' : ''}>⬆️</button>
+              <button class="btn-arrow" onclick="movePrompt(${index}, 1)" ${isLast ? 'disabled' : ''}>⬇️</button>
+              <button class="btn-del" onclick="deletePrompt(${p.id})">Excluir</button>
+            </div>
           </div>
         `;
       }).join('');
