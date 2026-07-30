@@ -56,6 +56,16 @@
     }
     textarea.form-control { min-height: 60px; }
 
+    /* SELECTOR DE TIPO DE MÍDIA */
+    .media-type-selector {
+      display: flex; gap: 8px; margin-bottom: 8px;
+    }
+    .media-type-btn {
+      flex: 1; padding: 8px; background: #1a1a20; border: 1px solid #333;
+      color: var(--muted); border-radius: 6px; font-size: 0.75rem; font-weight: bold; cursor: pointer;
+    }
+    .media-type-btn.active { background: var(--orange); color: #fff; border-color: var(--orange); }
+
     .btn-save {
       width: 100%; padding: 12px;
       background: #10b981; color: #fff;
@@ -116,7 +126,7 @@
   <!-- BOTÃO QUE ABRE O PAINEL -->
   <button class="admin-toggle-btn" id="toggleAdminBtn">⚙️ ABRIR PAINEL ADMIN / CRIAR</button>
 
-  <!-- PAINEL ADMINISTRATIVO (INICIALMENTE ESCONDIDO) -->
+  <!-- PAINEL ADMINISTRATIVO -->
   <div class="admin-panel" id="adminPanel">
     <h2>➕ Cadastrar Novo Prompt</h2>
     <form id="promptForm">
@@ -124,10 +134,28 @@
         <label>Título do Prompt</label>
         <input type="text" id="fTitulo" class="form-control" placeholder="Ex: Modelo no Espelho" required />
       </div>
+
+      <!-- SELETOR DE GALERIA OU LINK -->
       <div class="form-group">
-        <label>Link da Imagem/Vídeo (URL)</label>
-        <input type="text" id="fMedia" class="form-control" placeholder="https://..." required />
+        <label>Mídia (Escolha o método):</label>
+        <div class="media-type-selector">
+          <button type="button" class="media-type-btn active" id="btnOptFile" onclick="setMediaOption('file')">📁 Galeria / Arquivo</button>
+          <button type="button" class="media-type-btn" id="btnOptUrl" onclick="setMediaOption('url')">🔗 Link (URL)</button>
+        </div>
+
+        <!-- Opção 1: Selecionar Arquivo da Galeria -->
+        <div id="inputGroupFile">
+          <input type="file" id="fFile" class="form-control" accept="image/*,video/*" onchange="handleFileSelect(event)" />
+        </div>
+
+        <!-- Opção 2: Inserir Link -->
+        <div id="inputGroupUrl" style="display: none;">
+          <input type="text" id="fMediaUrl" class="form-control" placeholder="https://..." />
+        </div>
+
+        <input type="hidden" id="fFinalMedia" />
       </div>
+
       <div class="form-group">
         <label>Descrição Curta</label>
         <input type="text" id="fDesc" class="form-control" placeholder="Para produtos de beleza..." required />
@@ -155,7 +183,6 @@
   <div class="toast" id="toast">✓ Copiado com sucesso!</div>
 
   <script>
-    // DADOS INICIAIS DE EXEMPLO
     var defaultPrompts = [
       {
         id: 1,
@@ -168,15 +195,14 @@
     ];
 
     var prompts = JSON.parse(localStorage.getItem("ps_data")) || defaultPrompts;
+    var currentMediaOption = "file";
 
-    // ELEMENTOS DA TELA
     var toggleBtn = document.getElementById("toggleAdminBtn");
     var adminPanel = document.getElementById("adminPanel");
     var grid = document.getElementById("promptsGrid");
     var adminList = document.getElementById("adminListContainer");
     var form = document.getElementById("promptForm");
 
-    // LÓGICA DE ABRIR/FECHAR O PAINEL ADMIN
     toggleBtn.addEventListener("click", function() {
       if (adminPanel.classList.contains("active")) {
         adminPanel.classList.remove("active");
@@ -188,7 +214,38 @@
       }
     });
 
-    // RENDERIZAR CARDS NA TELA
+    // Alternar entre Galeria e Link
+    function setMediaOption(option) {
+      currentMediaOption = option;
+      var btnFile = document.getElementById("btnOptFile");
+      var btnUrl = document.getElementById("btnOptUrl");
+      var groupFile = document.getElementById("inputGroupFile");
+      var groupUrl = document.getElementById("inputGroupUrl");
+
+      if (option === 'file') {
+        btnFile.classList.add('active');
+        btnUrl.classList.remove('active');
+        groupFile.style.display = 'block';
+        groupUrl.style.display = 'none';
+      } else {
+        btnUrl.classList.add('active');
+        btnFile.classList.remove('active');
+        groupUrl.style.display = 'block';
+        groupFile.style.display = 'none';
+      }
+    }
+
+    // Processar Imagem Selecionada da Galeria
+    function handleFileSelect(e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(evt) {
+        document.getElementById("fFinalMedia").value = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
     function render() {
       grid.innerHTML = prompts.map(function(p) {
         return `
@@ -205,7 +262,6 @@
       }).join('');
     }
 
-    // RENDERIZAR LISTA DENTRO DO ADMIN PARA EXCLUIR
     function renderAdminList() {
       adminList.innerHTML = prompts.map(function(p) {
         return `
@@ -217,26 +273,42 @@
       }).join('');
     }
 
-    // ADICIONAR NOVO PROMPT
     form.addEventListener("submit", function(e) {
       e.preventDefault();
+      
+      var finalMediaValue = "";
+      if (currentMediaOption === 'file') {
+        finalMediaValue = document.getElementById("fFinalMedia").value;
+        if (!finalMediaValue) {
+          alert("Por favor, selecione uma imagem da galeria!");
+          return;
+        }
+      } else {
+        finalMediaValue = document.getElementById("fMediaUrl").value;
+        if (!finalMediaValue) {
+          alert("Por favor, insira o link da imagem!");
+          return;
+        }
+      }
+
       var newP = {
         id: Date.now(),
         titulo: document.getElementById("fTitulo").value,
-        media: document.getElementById("fMedia").value,
+        media: finalMediaValue,
         desc: document.getElementById("fDesc").value,
         promptImg: document.getElementById("fPromptImg").value,
         promptVid: document.getElementById("fPromptVid").value
       };
+
       prompts.unshift(newP);
       localStorage.setItem("ps_data", JSON.stringify(prompts));
       form.reset();
+      document.getElementById("fFinalMedia").value = "";
       render();
       renderAdminList();
       showToast("Prompt salvo com sucesso!");
     });
 
-    // EXCLUIR PROMPT
     function deletePrompt(id) {
       prompts = prompts.filter(function(p) { return p.id !== id; });
       localStorage.setItem("ps_data", JSON.stringify(prompts));
@@ -244,7 +316,6 @@
       renderAdminList();
     }
 
-    // COPIAR TEXTO
     function copyText(txt) {
       var ta = document.createElement("textarea");
       ta.value = txt;
@@ -266,7 +337,6 @@
       setTimeout(function() { t.style.display = "none"; }, 2000);
     }
 
-    // INICIALIZAR
     render();
   </script>
 </body>
