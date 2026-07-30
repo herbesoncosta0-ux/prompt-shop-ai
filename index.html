@@ -214,7 +214,7 @@
         <label>Prompt de Vídeo</label>
         <textarea id="fPromptVid" class="form-control" required></textarea>
       </div>
-      <button type="submit" class="btn-save">SALVAR PROMPT</button>
+      <button type="submit" class="btn-save" id="btnSaveSubmit">SALVAR PROMPT</button>
     </form>
 
     <div class="admin-list">
@@ -231,7 +231,30 @@
 
   <div class="toast" id="toast">✓ Copiado com sucesso!</div>
 
-  <script>
+  <!-- FIREBASE SDKs -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { 
+      getFirestore, 
+      doc, 
+      getDoc, 
+      setDoc, 
+      onSnapshot 
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCLzTSx4IuRNlArJLDdKTmrKtIUAQZf6xk",
+      authDomain: "prompt-shop-ai.firebaseapp.com",
+      projectId: "prompt-shop-ai",
+      storageBucket: "prompt-shop-ai.firebasestorage.app",
+      messagingSenderId: "185411404875",
+      appId: "1:185411404875:web:4f475750e54790062d39ce"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const docRef = doc(db, "app_data", "main_store");
+
     var defaultCategories = ["Todas", "Geral", "Feminino", "Masculino", "Eletrônicos"];
     var defaultPrompts = [
       {
@@ -245,11 +268,43 @@
       }
     ];
 
-    var categories = JSON.parse(localStorage.getItem("ps_cats")) || defaultCategories;
-    var prompts = JSON.parse(localStorage.getItem("ps_data")) || defaultPrompts;
-    var selectedCategory = "Todas";
-    var currentMediaOption = "file";
+    window.categories = defaultCategories;
+    window.prompts = defaultPrompts;
+    window.selectedCategory = "Todas";
+    window.currentMediaOption = "file";
 
+    // SINCRONIZAÇÃO EM TEMPO REAL COM FIREBASE
+    onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.categories) window.categories = data.categories;
+        if (data.prompts) window.prompts = data.prompts;
+      } else {
+        // Se ainda não existir no Firebase, insere os dados iniciais
+        saveToFirebase();
+      }
+      renderCategories();
+      render();
+      if (document.getElementById("adminPanel").classList.contains("active")) {
+        renderAdminList();
+      }
+    });
+
+    async function saveToFirebase() {
+      try {
+        await setDoc(docRef, {
+          categories: window.categories,
+          prompts: window.prompts
+        });
+      } catch (e) {
+        console.error("Erro ao salvar no Firebase:", e);
+      }
+    }
+
+    window.saveToFirebase = saveToFirebase;
+  </script>
+
+  <script>
     var toggleBtn = document.getElementById("toggleAdminBtn");
     var adminPanel = document.getElementById("adminPanel");
     var grid = document.getElementById("promptsGrid");
@@ -267,34 +322,29 @@
       }
     });
 
-    // RENDERIZAR CATEGORIAS
     function renderCategories() {
       var select = document.getElementById("fCategoria");
-      select.innerHTML = categories.filter(c => c !== "Todas").map(c => `<option value="${c}">${c}</option>`).join('');
+      select.innerHTML = window.categories.filter(c => c !== "Todas").map(c => `<option value="${c}">${c}</option>`).join('');
 
       var bar = document.getElementById("categoriesBar");
-      bar.innerHTML = categories.map(c => {
-        var activeClass = (c === selectedCategory) ? 'active' : '';
+      bar.innerHTML = window.categories.map(c => {
+        var activeClass = (c === window.selectedCategory) ? 'active' : '';
         return `<button class="cat-filter-btn ${activeClass}" onclick="filterByCategory('${c}')">${c}</button>`;
       }).join('');
     }
 
-    // CRIAR NOVA CATEGORIA
     function addNewCategory() {
       var input = document.getElementById("fNovaCategoria");
       var val = input.value.trim();
       if (!val) { alert("Digite o nome da categoria!"); return; }
-      if (categories.includes(val)) { alert("Esta categoria já existe!"); return; }
+      if (window.categories.includes(val)) { alert("Esta categoria já existe!"); return; }
 
-      categories.push(val);
-      localStorage.setItem("ps_cats", JSON.stringify(categories));
+      window.categories.push(val);
+      window.saveToFirebase();
       input.value = "";
-      renderCategories();
-      document.getElementById("fCategoria").value = val;
-      showToast("Nova categoria criada!");
+      showToast("Nova categoria criada na nuvem!");
     }
 
-    // EXCLUIR CATEGORIA
     function deleteCurrentCategory() {
       var select = document.getElementById("fCategoria");
       var catToDelete = select.value;
@@ -306,50 +356,41 @@
       }
 
       if (confirm(`Tem certeza que deseja excluir a categoria "${catToDelete}"? Os prompts dela serão movidos para "Geral".`)) {
-        categories = categories.filter(c => c !== catToDelete);
-        localStorage.setItem("ps_cats", JSON.stringify(categories));
-
-        prompts.forEach(p => {
+        window.categories = window.categories.filter(c => c !== catToDelete);
+        window.prompts.forEach(p => {
           if (p.categoria === catToDelete) {
             p.categoria = "Geral";
           }
         });
-        localStorage.setItem("ps_data", JSON.stringify(prompts));
 
-        if (selectedCategory === catToDelete) {
-          selectedCategory = "Todas";
+        if (window.selectedCategory === catToDelete) {
+          window.selectedCategory = "Todas";
         }
 
-        renderCategories();
-        render();
-        renderAdminList();
+        window.saveToFirebase();
         showToast("Categoria excluída com sucesso!");
       }
     }
 
-    // MOVER PROMPT PARA CIMA OU PARA BAIXO
     function movePrompt(index, direction) {
       var newIndex = index + direction;
-      if (newIndex < 0 || newIndex >= prompts.length) return;
+      if (newIndex < 0 || newIndex >= window.prompts.length) return;
 
-      var temp = prompts[index];
-      prompts[index] = prompts[newIndex];
-      prompts[newIndex] = temp;
+      var temp = window.prompts[index];
+      window.prompts[index] = window.prompts[newIndex];
+      window.prompts[newIndex] = temp;
 
-      localStorage.setItem("ps_data", JSON.stringify(prompts));
-      render();
-      renderAdminList();
+      window.saveToFirebase();
     }
 
-    // FILTRAR POR CATEGORIA
     function filterByCategory(cat) {
-      selectedCategory = cat;
+      window.selectedCategory = cat;
       renderCategories();
       render();
     }
 
     function setMediaOption(option) {
-      currentMediaOption = option;
+      window.currentMediaOption = option;
       var btnFile = document.getElementById("btnOptFile");
       var btnUrl = document.getElementById("btnOptUrl");
       var groupFile = document.getElementById("inputGroupFile");
@@ -371,6 +412,14 @@
     function handleFileSelect(e) {
       var file = e.target.files[0];
       if (!file) return;
+      
+      // Limitação simples para Base64 não estourar limite do documento
+      if (file.size > 1048576) { 
+        alert("A imagem da galeria é muito grande. Escolha uma foto menor que 1MB ou use a opção de Link (URL).");
+        e.target.value = "";
+        return;
+      }
+
       var reader = new FileReader();
       reader.onload = function(evt) {
         document.getElementById("fFinalMedia").value = evt.target.result;
@@ -379,7 +428,7 @@
     }
 
     function render() {
-      var filteredPrompts = prompts.filter(p => selectedCategory === "Todas" || p.categoria === selectedCategory);
+      var filteredPrompts = window.prompts.filter(p => window.selectedCategory === "Todas" || p.categoria === window.selectedCategory);
 
       if (filteredPrompts.length === 0) {
         grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:30px; color:#888;">Nenhum prompt cadastrado nesta categoria.</div>`;
@@ -403,9 +452,9 @@
     }
 
     function renderAdminList() {
-      adminList.innerHTML = prompts.map(function(p, index) {
+      adminList.innerHTML = window.prompts.map(function(p, index) {
         var isFirst = index === 0;
-        var isLast = index === prompts.length - 1;
+        var isLast = index === window.prompts.length - 1;
         return `
           <div class="admin-item">
             <span class="admin-item-title"><strong>[${p.categoria || 'Geral'}]</strong> ${p.titulo}</span>
@@ -423,7 +472,7 @@
       e.preventDefault();
       
       var finalMediaValue = "";
-      if (currentMediaOption === 'file') {
+      if (window.currentMediaOption === 'file') {
         finalMediaValue = document.getElementById("fFinalMedia").value;
         if (!finalMediaValue) {
           alert("Por favor, selecione uma imagem da galeria!");
@@ -447,20 +496,18 @@
         promptVid: document.getElementById("fPromptVid").value
       };
 
-      prompts.unshift(newP);
-      localStorage.setItem("ps_data", JSON.stringify(prompts));
+      window.prompts.unshift(newP);
+      window.saveToFirebase();
+      
       form.reset();
       document.getElementById("fFinalMedia").value = "";
-      render();
-      renderAdminList();
-      showToast("Prompt salvo com sucesso!");
+      showToast("Prompt salvo na nuvem com sucesso!");
     });
 
     function deletePrompt(id) {
-      prompts = prompts.filter(function(p) { return p.id !== id; });
-      localStorage.setItem("ps_data", JSON.stringify(prompts));
-      render();
-      renderAdminList();
+      window.prompts = window.prompts.filter(function(p) { return p.id !== id; });
+      window.saveToFirebase();
+      showToast("Prompt excluído!");
     }
 
     function copyText(txt) {
@@ -483,10 +530,6 @@
       t.style.display = "block";
       setTimeout(function() { t.style.display = "none"; }, 2000);
     }
-
-    // INICIALIZAR
-    renderCategories();
-    render();
   </script>
 </body>
 </html>
