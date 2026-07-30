@@ -273,22 +273,52 @@
     window.selectedCategory = "Todas";
     window.currentMediaOption = "file";
 
+    // RECUPERAR DADOS DO LOCALSTORAGE CASO EXISTAM
+    var localCats = JSON.parse(localStorage.getItem("ps_cats"));
+    var localPrompts = JSON.parse(localStorage.getItem("ps_data"));
+
     // SINCRONIZAÇÃO EM TEMPO REAL COM FIREBASE
     onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.categories) window.categories = data.categories;
-        if (data.prompts) window.prompts = data.prompts;
+        
+        // Se houver dados locais antigos, une com o Firebase para não perder nada
+        if (localPrompts && localPrompts.length > 0) {
+          window.prompts = combineUniquePrompts(data.prompts || [], localPrompts);
+          window.categories = combineUniqueCategories(data.categories || [], localCats || []);
+          localStorage.removeItem("ps_data"); // Limpa local após migrar
+          localStorage.removeItem("ps_cats");
+          saveToFirebase(); // Atualiza na nuvem
+        } else {
+          if (data.categories) window.categories = data.categories;
+          if (data.prompts) window.prompts = data.prompts;
+        }
       } else {
-        // Se ainda não existir no Firebase, insere os dados iniciais
+        // Se a nuvem estiver vazia, envia os locais antigos ou o padrão
+        if (localPrompts && localPrompts.length > 0) {
+          window.prompts = localPrompts;
+          if (localCats) window.categories = localCats;
+        }
         saveToFirebase();
       }
+
       renderCategories();
       render();
       if (document.getElementById("adminPanel").classList.contains("active")) {
         renderAdminList();
       }
     });
+
+    function combineUniquePrompts(cloud, local) {
+      const map = new Map();
+      local.forEach(item => map.set(item.id, item));
+      cloud.forEach(item => map.set(item.id, item));
+      return Array.from(map.values());
+    }
+
+    function combineUniqueCategories(cloud, local) {
+      return Array.from(new Set([...cloud, ...local]));
+    }
 
     async function saveToFirebase() {
       try {
@@ -405,15 +435,14 @@
         btnUrl.classList.add('active');
         btnFile.classList.remove('active');
         groupUrl.style.display = 'block';
-        groupFile.style.display = 'none';
+        groupUrl.style.display = 'none';
       }
     }
 
     function handleFileSelect(e) {
       var file = e.target.files[0];
       if (!file) return;
-      
-      // Limitação simples para Base64 não estourar limite do documento
+
       if (file.size > 1048576) { 
         alert("A imagem da galeria é muito grande. Escolha uma foto menor que 1MB ou use a opção de Link (URL).");
         e.target.value = "";
