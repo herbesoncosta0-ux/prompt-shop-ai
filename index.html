@@ -133,9 +133,10 @@
       position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,0.7);
       color: var(--orange); border: 1px solid var(--orange); font-size: 0.6rem;
       font-weight: bold; padding: 2px 6px; border-radius: 4px; text-transform: uppercase;
+      z-index: 2;
     }
 
-    .card-img { width: 100%; aspect-ratio: 3/4; object-fit: cover; background: #000; }
+    .card-media { width: 100%; aspect-ratio: 3/4; object-fit: cover; background: #000; display: block; }
     .card-content { padding: 8px; display: flex; flex-direction: column; flex-grow: 1; }
     .card-title { font-size: 0.8rem; font-weight: bold; margin-bottom: 4px; }
     .card-desc { font-size: 0.7rem; color: var(--muted); margin-bottom: 8px; flex-grow: 1; }
@@ -199,16 +200,16 @@
       <div class="form-group">
         <label>Mídia (Escolha o método):</label>
         <div class="media-type-selector">
-          <button type="button" class="media-type-btn active" id="btnOptFile" onclick="setMediaOption('file')">📁 Galeria / Arquivo</button>
+          <button type="button" class="media-type-btn active" id="btnOptFile" onclick="setMediaOption('file')">📁 Foto/Vídeo Galeria</button>
           <button type="button" class="media-type-btn" id="btnOptUrl" onclick="setMediaOption('url')">🔗 Link (URL)</button>
         </div>
 
         <div id="inputGroupFile">
-          <input type="file" id="fFile" class="form-control" accept="image/*" onchange="handleFileSelect(event)" />
+          <input type="file" id="fFile" class="form-control" accept="image/*,video/*" onchange="handleFileSelect(event)" />
         </div>
 
         <div id="inputGroupUrl" style="display: none;">
-          <input type="text" id="fMediaUrl" class="form-control" placeholder="https://..." />
+          <input type="text" id="fMediaUrl" class="form-control" placeholder="https://... (Foto ou Vídeo MP4)" />
         </div>
 
         <input type="hidden" id="fFinalMedia" />
@@ -286,11 +287,9 @@
     window.selectedCategory = "Todas";
     window.currentMediaOption = "file";
 
-    // RECUPERAR DADOS DO LOCALSTORAGE CASO EXISTAM
     var localCats = JSON.parse(localStorage.getItem("ps_cats"));
     var localPrompts = JSON.parse(localStorage.getItem("ps_data"));
 
-    // SINCRONIZAÇÃO EM TEMPO REAL COM FIREBASE
     onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -461,6 +460,17 @@
       if (!file) return;
 
       var reader = new FileReader();
+
+      // SE FOR VÍDEO
+      if (file.type.startsWith('video/')) {
+        reader.onload = function(evt) {
+          document.getElementById("fFinalMedia").value = evt.target.result;
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      // SE FOR IMAGEM (COMPRIME)
       reader.onload = function(evt) {
         var img = new Image();
         img.onload = function() {
@@ -494,6 +504,14 @@
       reader.readAsDataURL(file);
     }
 
+    // VERIFICA SE O LINK OU BASE64 É UM VÍDEO
+    function isVideoMedia(src) {
+      if (!src) return false;
+      if (src.startsWith('data:video/')) return true;
+      var lower = src.toLowerCase();
+      return lower.endsWith('.mp4') || lower.endsWith('.webm') || lower.endsWith('.ogg') || lower.endsWith('.mov');
+    }
+
     function render() {
       var filteredPrompts = window.prompts.filter(p => window.selectedCategory === "Todas" || p.categoria === window.selectedCategory);
 
@@ -503,10 +521,15 @@
       }
 
       grid.innerHTML = filteredPrompts.map(function(p) {
+        var isVid = isVideoMedia(p.media);
+        var mediaHtml = isVid 
+          ? `<video class="card-media" src="${p.media}" autoplay loop muted playsinline></video>`
+          : `<img class="card-media" src="${p.media}" alt="${p.titulo}" onerror="this.src='https://via.placeholder.com/300x400?text=Sem+Imagem'" />`;
+
         return `
           <div class="card">
             <span class="card-badge">${p.categoria || 'Geral'}</span>
-            <img class="card-img" src="${p.media}" alt="${p.titulo}" onerror="this.src='https://via.placeholder.com/300x400?text=Sem+Imagem'" />
+            ${mediaHtml}
             <div class="card-content">
               <div class="card-title">${p.titulo}</div>
               <div class="card-desc">${p.desc}</div>
@@ -536,7 +559,6 @@
       }).join('');
     }
 
-    // INICIAR MODO DE EDIÇÃO
     function startEditing(id) {
       var p = window.prompts.find(item => item.id === id);
       if (!p) return;
@@ -548,7 +570,6 @@
       document.getElementById("fPromptImg").value = p.promptImg;
       document.getElementById("fPromptVid").value = p.promptVid;
 
-      // Definir Mídia
       document.getElementById("fFinalMedia").value = p.media;
       if (p.media.startsWith("http")) {
         setMediaOption('url');
@@ -557,18 +578,15 @@
         setMediaOption('file');
       }
 
-      // Atualizar Interface do Formulário
       document.getElementById("formTitle").innerText = "✏️ Editar Prompt";
       var btnSubmit = document.getElementById("btnSaveSubmit");
       btnSubmit.innerText = "SALVAR ALTERAÇÕES";
       btnSubmit.style.background = "var(--blue)";
       document.getElementById("btnCancelEdit").style.display = "block";
 
-      // Rolar para o formulário
       adminPanel.scrollIntoView({ behavior: 'smooth' });
     }
 
-    // CANCELAR EDIÇÃO
     function cancelEditing() {
       form.reset();
       document.getElementById("fEditingId").value = "";
@@ -599,14 +617,13 @@
       }
 
       if (!finalMediaValue) {
-        alert("Por favor, selecione uma foto da galeria ou insira o link da imagem!");
+        alert("Por favor, selecione uma foto/vídeo da galeria ou insira o link da mídia!");
         btnSubmit.innerText = isEditing ? "SALVAR ALTERAÇÕES" : "SALVAR PROMPT";
         btnSubmit.disabled = false;
         return;
       }
 
       if (isEditing) {
-        // ATUALIZAR PROMPT EXISTENTE
         var targetId = parseInt(editingId);
         var idx = window.prompts.findIndex(p => p.id === targetId);
         if (idx !== -1) {
@@ -621,7 +638,6 @@
           };
         }
       } else {
-        // CRIAR NOVO PROMPT
         var newP = {
           id: Date.now(),
           titulo: document.getElementById("fTitulo").value,
